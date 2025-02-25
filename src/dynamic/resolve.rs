@@ -502,9 +502,9 @@ async fn resolve_value(
     schema: &Schema,
     ctx: &Context<'_>,
     field_type: &Type,
-    value: &FieldValue<'_>,
+    value_to_resolve: &FieldValue<'_>,
 ) -> ServerResult<Option<Value>> {
-    match (field_type, &value.0) {
+    match (field_type, &value_to_resolve.0) {
         (Type::Scalar(scalar), FieldValueInner::Value(value)) if scalar.validate(value) => {
             Ok(Some(value.clone()))
         }
@@ -521,7 +521,7 @@ async fn resolve_value(
                 schema,
                 object,
                 &ctx.with_selection_set(&ctx.item.node.selection_set),
-                value,
+                value_to_resolve,
                 true,
             )
             .await

@@ -273,6 +273,10 @@ impl Interface {
             },
         );
 
+        for interface in &self.implements {
+            registry.add_implements(&self.name, interface);
+        }
+
         Ok(())
     }
 }
