@@ -515,6 +515,7 @@ fn update_interface_possible_types(types: &mut IndexMap<String, Type>, registry:
 
     let objs = types.values().filter_map(|ty| match ty {
         Type::Object(obj) => Some((&obj.name, &obj.implements)),
+        Type::Interface(obj) => Some((&obj.name, &obj.implements)),
         _ => None,
     });
 
