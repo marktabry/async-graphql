@@ -165,13 +165,13 @@ mod tests {
       src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"
     ></script>
     <link rel="icon" href="https://graphql.org/favicon.ico">
-    <link rel="stylesheet" href="https://unpkg.com/graphiql/graphiql.min.css" />
+    <link rel="stylesheet" href="https://unpkg.com/graphiql@4.1.2/graphiql.min.css" />
   </head>
 
   <body>
     <div id="graphiql">Loading...</div>
     <script
-      src="https://unpkg.com/graphiql/graphiql.min.js"
+      src="https://unpkg.com/graphiql@4.1.2/graphiql.min.js"
       type="application/javascript"
     ></script>
     <script>
@@ -242,13 +242,13 @@ mod tests {
       src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"
     ></script>
     <link rel="icon" href="https://graphql.org/favicon.ico">
-    <link rel="stylesheet" href="https://unpkg.com/graphiql/graphiql.min.css" />
+    <link rel="stylesheet" href="https://unpkg.com/graphiql@4.1.2/graphiql.min.css" />
   </head>
 
   <body>
     <div id="graphiql">Loading...</div>
     <script
-      src="https://unpkg.com/graphiql/graphiql.min.js"
+      src="https://unpkg.com/graphiql@4.1.2/graphiql.min.js"
       type="application/javascript"
     ></script>
     <script>
@@ -326,18 +326,18 @@ mod tests {
       src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"
     ></script>
     <link rel="icon" href="https://graphql.org/favicon.ico">
-    <link rel="stylesheet" href="https://unpkg.com/graphiql/graphiql.min.css" />
-    <link rel="stylesheet" href="https://unpkg.com/@graphiql/plugin-explorer/dist/style.css" />
+    <link rel="stylesheet" href="https://unpkg.com/graphiql@4.1.2/graphiql.min.css" />
+    <link rel="stylesheet" href="https://unpkg.com/@graphiql/plugin-explorer@4.0.6/dist/style.css" />
   </head>
 
   <body>
     <div id="graphiql">Loading...</div>
     <script
-      src="https://unpkg.com/graphiql/graphiql.min.js"
+      src="https://unpkg.com/graphiql@4.1.2/graphiql.min.js"
       type="application/javascript"
     ></script>
     <script
-      src="https://unpkg.com/@graphiql/plugin-explorer/dist/index.umd.js"
+      src="https://unpkg.com/@graphiql/plugin-explorer@4.0.6/dist/index.umd.js"
       crossorigin
     ></script>
     <script>
