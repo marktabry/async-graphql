@@ -26,8 +26,8 @@ enum TestEnum @oneOf {
 	C
 }
 
-interface TestInterface @test(a: 5, b: true, c: "str") {
-	id: String! @id
+interface TestInterface @test(a: 5, b: true, c: "str") @testDirective(prefix: "prefix") {
+	id: String! @id @testDirective(prefix: "prefix")
 	name: String!
 }
 
@@ -43,6 +43,10 @@ directive @include(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
 Directs the executor to skip this field or fragment when the `if` argument is true.
 """
 directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+"""
+Concatenates a string
+"""
+directive @testDirective(prefix: String!) on ARGUMENT_DEFINITION | OBJECT | ENUM
 schema {
 	query: Query
 }

@@ -1,12 +1,15 @@
 #[cfg(feature = "dynamic-schema")]
 mod tests {
     use async_graphql::{
-        Value,
+        Value, CustomDirective, CustomDirectiveFactory, ContextDirective, ServerResult,
+        registry::{Registry, MetaDirective, __DirectiveLocation, MetaInputValue},
         dynamic::{
             Directive, Enum, EnumItem, Field, FieldFuture, InputObject, InputValue, Interface,
             InterfaceField, Object, ResolverContext, Scalar, Schema, SchemaError, TypeRef, Union,
         },
     };
+    use std::borrow::Cow;
+    use indexmap::IndexMap;
 
     fn mock_resolver_fn(_ctx: ResolverContext) -> FieldFuture {
         FieldFuture::Value(None)
@@ -22,7 +25,8 @@ mod tests {
         let interface = Interface::new("TestInterface")
             .field(
                 InterfaceField::new("id", TypeRef::named_nn(TypeRef::STRING))
-                    .directive(Directive::new("id")),
+                    .directive(Directive::new("id"))
+                    .directive(Directive::new("testDirective").argument("prefix", "prefix".into())),
             )
             .field(InterfaceField::new(
                 "name",
@@ -33,7 +37,8 @@ mod tests {
                     .argument("a", Value::from(5))
                     .argument("b", Value::from(true))
                     .argument("c", Value::from("str")),
-            );
+            )
+            .directive(Directive::new("testDirective").argument("prefix", "prefix".into()));
 
         let output_type = Object::new("OutputType")
             .implement(interface.type_name())
@@ -120,6 +125,45 @@ mod tests {
                 mock_resolver_fn,
             ));
 
+        struct TestDirective;
+        impl CustomDirective for TestDirective {}
+        impl CustomDirectiveFactory for TestDirective {
+            fn name(&self) -> Cow<'static, str> {
+                "testDirective".into()
+            }
+
+            fn register(&self, registry: &mut Registry) {
+                registry.add_directive(MetaDirective {
+                    name: "testDirective".to_string(),
+                    description: Some("Concatenates a string".to_string()),
+                    locations: vec![__DirectiveLocation::ARGUMENT_DEFINITION, __DirectiveLocation::OBJECT, __DirectiveLocation::ENUM],
+                    args: {
+                        let mut map = IndexMap::new();
+                        map.insert(String::from("prefix"), MetaInputValue {
+                            name: "prefix".to_string(),
+                            description: None,
+                            ty: "String!".to_string(),
+                            deprecation: Default::default(),
+                            default_value: None,
+                            visible: None,
+                            inaccessible: false,
+                            tags: vec![],
+                            is_secret: false,
+                            directive_invocations: vec![],
+                        });
+                        map
+                    },
+                    is_repeatable: false,
+                    visible: None,
+                    composable: None,
+                })
+            }
+
+            fn create(&self, _: &ContextDirective<'_>, _: &async_graphql_parser::types::Directive) -> ServerResult<Box<dyn CustomDirective>> {
+                Ok(Box::new(TestDirective {}))
+            }
+        }
+
         Schema::build(query.type_name(), None, None)
             .register(test_enum)
             .register(interface)
@@ -129,6 +173,7 @@ mod tests {
             .register(union_type)
             .register(scalar)
             .register(query)
+            .directive(TestDirective)
             .finish()
     }
 

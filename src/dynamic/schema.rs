@@ -6,7 +6,7 @@ use indexmap::IndexMap;
 
 use crate::{
     Data, Executor, IntrospectionMode, QueryEnv, Request, Response, SDLExportOptions, SchemaEnv,
-    ServerError, ServerResult, ValidationMode,
+    ServerError, ServerResult, ValidationMode, CustomDirectiveFactory,
     dynamic::{
         DynamicRequest, FieldFuture, FieldValue, Object, ResolverContext, Scalar, SchemaError,
         Subscription, TypeRef, Union, field::BoxResolverFn, resolve::resolve_container,
@@ -34,6 +34,7 @@ pub struct SchemaBuilder {
     introspection_mode: IntrospectionMode,
     enable_federation: bool,
     entity_resolver: Option<BoxResolverFn>,
+    custom_directives: HashMap<String, Box<dyn CustomDirectiveFactory>>,
 }
 
 impl SchemaBuilder {
@@ -146,6 +147,27 @@ impl SchemaBuilder {
         }
     }
 
+    /// Register a custom directive.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the directive with the same name is already registered.
+    #[must_use]
+    pub fn directive<T: CustomDirectiveFactory>(mut self, directive: T) -> Self {
+        let name = directive.name();
+        let instance = Box::new(directive);
+
+        if self
+            .custom_directives
+            .insert(name.clone().into(), instance)
+            .is_some()
+        {
+            panic!("Directive `{}` already exists", name);
+        }
+
+        self
+    }
+
     /// Consumes this builder and returns a schema.
     pub fn finish(mut self) -> Result<Schema, SchemaError> {
         let mut registry = Registry {
@@ -203,11 +225,16 @@ impl SchemaBuilder {
                 .insert("_Entity".to_string(), Type::Union(entity));
         }
 
+        // Register all custom directives with the registry
+        for (_, directive) in &mut self.custom_directives {
+            directive.register(&mut registry)
+        }
+
         let inner = SchemaInner {
             env: SchemaEnv(Arc::new(SchemaEnvInner {
                 registry,
                 data: self.data,
-                custom_directives: Default::default(),
+                custom_directives: self.custom_directives
             })),
             extensions: self.extensions,
             types: self.types,
@@ -266,6 +293,7 @@ impl Schema {
             introspection_mode: IntrospectionMode::Enabled,
             entity_resolver: None,
             enable_federation: false,
+            custom_directives: Default::default(),
         }
     }
 
