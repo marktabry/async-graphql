@@ -22,6 +22,11 @@ mod tests {
             .item(EnumItem::new("C"))
             .directive(Directive::new("oneOf"));
 
+        let super_interface = Interface::new("SuperInterface").field(InterfaceField::new(
+            "id",
+            TypeRef::named_nn(TypeRef::STRING),
+        ));
+
         let interface = Interface::new("TestInterface")
             .field(
                 InterfaceField::new("id", TypeRef::named_nn(TypeRef::STRING))
@@ -32,6 +37,7 @@ mod tests {
                 "name",
                 TypeRef::named_nn(TypeRef::STRING),
             ))
+            .implement(super_interface.type_name())
             .directive(
                 Directive::new("test")
                     .argument("a", Value::from(5))
@@ -166,6 +172,7 @@ mod tests {
 
         Schema::build(query.type_name(), None, None)
             .register(test_enum)
+            .register(super_interface)
             .register(interface)
             .register(input_type)
             .register(output_type)

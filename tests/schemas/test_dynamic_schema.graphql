@@ -20,13 +20,17 @@ type Query {
 	scalar: TestScalar
 }
 
+interface SuperInterface {
+	id: String!
+}
+
 enum TestEnum @oneOf {
 	A
 	B @default
 	C
 }
 
-interface TestInterface @test(a: 5, b: true, c: "str") @testDirective(prefix: "prefix") {
+interface TestInterface implements SuperInterface @test(a: 5, b: true, c: "str") @testDirective(prefix: "prefix") {
 	id: String! @id @testDirective(prefix: "prefix")
 	name: String!
 }
