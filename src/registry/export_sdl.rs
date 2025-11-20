@@ -531,11 +531,11 @@ impl Registry {
                     }
                 }
 
+                self.write_implements(sdl, name);
+
                 for directive in directive_invocations {
                     write!(sdl, " {}", directive.sdl()).ok();
                 }
-
-                self.write_implements(sdl, name);
 
                 writeln!(sdl, " {{").ok();
                 Self::export_fields(sdl, fields.values(), options);
