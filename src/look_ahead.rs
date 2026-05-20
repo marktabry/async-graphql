@@ -8,7 +8,7 @@ use crate::{
 /// A selection performed by a query.
 pub struct Lookahead<'a> {
     fragments: &'a HashMap<Name, Positioned<FragmentDefinition>>,
-    fields: Vec<&'a Field>,
+    fields: Vec<(&'a Field, Option<&'a str>)>,
     context: &'a Context<'a>,
 }
 
@@ -20,7 +20,7 @@ impl<'a> Lookahead<'a> {
     ) -> Self {
         Self {
             fragments,
-            fields: vec![field],
+            fields: vec![(field, None)],
             context,
         }
     }
@@ -33,8 +33,14 @@ impl<'a> Lookahead<'a> {
     #[must_use]
     pub fn field(&self, name: &str) -> Self {
         let mut fields = Vec::new();
-        for field in &self.fields {
-            filter(&mut fields, self.fragments, &field.selection_set.node, name)
+        for (field, _) in &self.fields {
+            filter(
+                &mut fields,
+                self.fragments,
+                &field.selection_set.node,
+                name,
+                None,
+            )
         }
 
         Self {
@@ -58,10 +64,11 @@ impl<'a> Lookahead<'a> {
     pub fn selection_fields(&self) -> Vec<SelectionField<'a>> {
         self.fields
             .iter()
-            .map(|field| SelectionField {
+            .map(|(field, type_condition)| SelectionField {
                 fragments: self.fragments,
                 field,
                 context: self.context,
+                type_condition: *type_condition,
             })
             .collect()
     }
@@ -71,7 +78,7 @@ impl<'a> From<SelectionField<'a>> for Lookahead<'a> {
     fn from(selection_field: SelectionField<'a>) -> Self {
         Lookahead {
             fragments: selection_field.fragments,
-            fields: vec![selection_field.field],
+            fields: vec![(selection_field.field, selection_field.type_condition)],
             context: selection_field.context,
         }
     }
@@ -93,7 +100,7 @@ impl<'a> TryFrom<&[SelectionField<'a>]> for Lookahead<'a> {
                 fragments: selection_fields[0].fragments,
                 fields: selection_fields
                     .iter()
-                    .map(|selection_field| selection_field.field)
+                    .map(|sf| (sf.field, sf.type_condition))
                     .collect(),
                 context: selection_fields[0].context,
             })
@@ -102,24 +109,43 @@ impl<'a> TryFrom<&[SelectionField<'a>]> for Lookahead<'a> {
 }
 
 fn filter<'a>(
-    fields: &mut Vec<&'a Field>,
+    fields: &mut Vec<(&'a Field, Option<&'a str>)>,
     fragments: &'a HashMap<Name, Positioned<FragmentDefinition>>,
     selection_set: &'a SelectionSet,
     name: &str,
+    active_type_condition: Option<&'a str>,
 ) {
     for item in &selection_set.items {
         match &item.node {
             Selection::Field(field) => {
                 if field.node.name.node == name {
-                    fields.push(&field.node)
+                    fields.push((&field.node, active_type_condition))
                 }
             }
             Selection::InlineFragment(fragment) => {
-                filter(fields, fragments, &fragment.node.selection_set.node, name)
+                let new_type_condition = fragment
+                    .node
+                    .type_condition
+                    .as_ref()
+                    .map(|tc| tc.node.on.node.as_str())
+                    .or(active_type_condition);
+                filter(
+                    fields,
+                    fragments,
+                    &fragment.node.selection_set.node,
+                    name,
+                    new_type_condition,
+                )
             }
             Selection::FragmentSpread(spread) => {
                 if let Some(fragment) = fragments.get(&spread.node.fragment_name.node) {
-                    filter(fields, fragments, &fragment.node.selection_set.node, name)
+                    filter(
+                        fields,
+                        fragments,
+                        &fragment.node.selection_set.node,
+                        name,
+                        Some(fragment.node.type_condition.node.on.node.as_str()),
+                    )
                 }
             }
         }

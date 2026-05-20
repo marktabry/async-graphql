@@ -733,6 +733,7 @@ impl<'a> ContextBase<'a, &'a Positioned<Field>> {
             fragments: &self.query_env.fragments,
             field: &self.item.node,
             context: self,
+            type_condition: None,
         }
     }
 }
@@ -754,6 +755,7 @@ pub struct SelectionField<'a> {
     pub(crate) fragments: &'a HashMap<Name, Positioned<FragmentDefinition>>,
     pub(crate) field: &'a Field,
     pub(crate) context: &'a Context<'a>,
+    pub(crate) type_condition: Option<&'a str>,
 }
 
 impl<'a> SelectionField<'a> {
@@ -819,9 +821,15 @@ impl<'a> SelectionField<'a> {
     pub fn selection_set(&self) -> impl Iterator<Item = SelectionField<'a>> {
         SelectionFieldsIter {
             fragments: self.fragments,
-            iter: vec![self.field.selection_set.node.items.iter()],
+            iter: vec![(self.field.selection_set.node.items.iter(), None)],
             context: self.context,
         }
+    }
+
+    /// The fragment type condition under which this field was requested, if any.
+    #[inline]
+    pub fn type_condition(&self) -> Option<&'a str> {
+        self.type_condition
     }
 }
 
@@ -845,9 +853,14 @@ impl Debug for SelectionField<'_> {
     }
 }
 
+type SelectionFrame<'a> = (
+    std::slice::Iter<'a, Positioned<Selection>>,
+    Option<&'a str>,
+);
+
 struct SelectionFieldsIter<'a> {
     fragments: &'a HashMap<Name, Positioned<FragmentDefinition>>,
-    iter: Vec<std::slice::Iter<'a, Positioned<Selection>>>,
+    iter: Vec<SelectionFrame<'a>>,
     context: &'a Context<'a>,
 }
 
@@ -856,7 +869,8 @@ impl<'a> Iterator for SelectionFieldsIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let it = self.iter.last_mut()?;
+            let (it, active_type_condition) = self.iter.last_mut()?;
+            let active_type_condition = *active_type_condition;
             let item = it.next();
 
             match item {
@@ -866,19 +880,30 @@ impl<'a> Iterator for SelectionFieldsIter<'a> {
                             fragments: self.fragments,
                             field: &field.node,
                             context: self.context,
+                            type_condition: active_type_condition,
                         });
                     }
                     Selection::FragmentSpread(fragment_spread) => {
                         if let Some(fragment) =
                             self.fragments.get(&fragment_spread.node.fragment_name.node)
                         {
-                            self.iter
-                                .push(fragment.node.selection_set.node.items.iter());
+                            self.iter.push((
+                                fragment.node.selection_set.node.items.iter(),
+                                Some(fragment.node.type_condition.node.on.node.as_str()),
+                            ));
                         }
                     }
                     Selection::InlineFragment(inline_fragment) => {
-                        self.iter
-                            .push(inline_fragment.node.selection_set.node.items.iter());
+                        let new_type_condition = inline_fragment
+                            .node
+                            .type_condition
+                            .as_ref()
+                            .map(|tc| tc.node.on.node.as_str())
+                            .or(active_type_condition);
+                        self.iter.push((
+                            inline_fragment.node.selection_set.node.items.iter(),
+                            new_type_condition,
+                        ));
                     }
                 },
                 None => {
@@ -886,5 +911,181 @@ impl<'a> Iterator for SelectionFieldsIter<'a> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+
+    #[derive(SimpleObject)]
+    #[graphql(internal)]
+    struct Detail {
+        x: i32,
+    }
+
+    #[derive(SimpleObject)]
+    #[graphql(internal)]
+    struct MyObj {
+        a: i32,
+        b: i32,
+        c: i32,
+        detail: Detail,
+    }
+
+    fn collect_pairs<'a>(
+        it: impl Iterator<Item = SelectionField<'a>>,
+    ) -> Vec<(String, Option<String>)> {
+        it.map(|f| {
+            (
+                f.name().to_string(),
+                f.type_condition().map(str::to_string),
+            )
+        })
+        .collect()
+    }
+
+    struct Query;
+
+    #[Object(internal)]
+    impl Query {
+        async fn obj(&self, ctx: &Context<'_>, n: i32) -> MyObj {
+            let field = ctx.field();
+
+            assert_eq!(
+                field.type_condition(),
+                None,
+                "ctx.field().type_condition() must be None (n={})",
+                n,
+            );
+
+            match n {
+                1 => {
+                    let pairs = collect_pairs(field.selection_set());
+                    assert_eq!(
+                        pairs,
+                        vec![
+                            ("a".into(), None),
+                            ("b".into(), None),
+                            ("c".into(), None),
+                        ]
+                    );
+                }
+                2 => {
+                    let pairs = collect_pairs(field.selection_set());
+                    assert_eq!(
+                        pairs,
+                        vec![
+                            ("a".into(), None),
+                            ("b".into(), Some("MyObj".into())),
+                            ("c".into(), Some("MyObj".into())),
+                        ]
+                    );
+                }
+                3 => {
+                    let pairs = collect_pairs(field.selection_set());
+                    assert_eq!(
+                        pairs,
+                        vec![
+                            ("a".into(), None),
+                            ("b".into(), Some("MyObj".into())),
+                            ("c".into(), Some("MyObj".into())),
+                        ]
+                    );
+                }
+                4 => {
+                    let pairs = collect_pairs(field.selection_set());
+                    assert_eq!(pairs, vec![("a".into(), None)]);
+                }
+                5 => {
+                    let pairs = collect_pairs(field.selection_set());
+                    assert_eq!(pairs, vec![("a".into(), Some("MyObj".into()))]);
+                }
+                6 => {
+                    let pairs = collect_pairs(field.selection_set());
+                    assert_eq!(pairs, vec![("a".into(), Some("MyObj".into()))]);
+                }
+                7 => {
+                    let pairs = collect_pairs(field.selection_set());
+                    assert_eq!(pairs, vec![("a".into(), Some("MyObj".into()))]);
+                }
+                8 => {
+                    let detail = field
+                        .selection_set()
+                        .find(|f| f.name() == "detail")
+                        .expect("detail not found in selection set");
+                    assert_eq!(detail.type_condition(), Some("MyObj"));
+                    let detail_children = collect_pairs(detail.selection_set());
+                    assert_eq!(detail_children, vec![("x".into(), None)]);
+                }
+                9 => {
+                    let look_fields = ctx.look_ahead().field("a").selection_fields();
+                    assert!(!look_fields.is_empty(), "expected look_ahead to find `a`");
+                    for f in &look_fields {
+                        assert_eq!(f.type_condition(), Some("MyObj"));
+                    }
+                }
+                10 => {}
+                _ => panic!("unexpected n={}", n),
+            }
+
+            MyObj {
+                a: 0,
+                b: 0,
+                c: 0,
+                detail: Detail { x: 0 },
+            }
+        }
+    }
+
+    async fn run_ok(schema: &Schema<Query, EmptyMutation, EmptySubscription>, query: &str) {
+        let resp = schema.execute(query).await;
+        assert!(
+            resp.errors.is_empty(),
+            "execute failed: {:?} for query {}",
+            resp.errors,
+            query,
+        );
+    }
+
+    #[tokio::test]
+    async fn test_selection_field_type_condition() {
+        let schema = Schema::new(Query, EmptyMutation, EmptySubscription);
+
+        run_ok(&schema, r#"{ obj(n: 1) { a b c } }"#).await;
+
+        run_ok(&schema, r#"{ obj(n: 2) { a ... on MyObj { b c } } }"#).await;
+
+        run_ok(
+            &schema,
+            r#"{ obj(n: 3) { a ... F } } fragment F on MyObj { b c }"#,
+        )
+        .await;
+
+        run_ok(&schema, r#"{ obj(n: 4) { ... { a } } }"#).await;
+
+        run_ok(&schema, r#"{ obj(n: 5) { ... on MyObj { ... { a } } } }"#).await;
+
+        run_ok(
+            &schema,
+            r#"{ obj(n: 6) { ... on MyObj { ... on MyObj { a } } } }"#,
+        )
+        .await;
+
+        run_ok(
+            &schema,
+            r#"{ obj(n: 7) { ... on MyObj { ... F } } } fragment F on MyObj { a }"#,
+        )
+        .await;
+
+        run_ok(
+            &schema,
+            r#"{ obj(n: 8) { ... on MyObj { detail { x } } } }"#,
+        )
+        .await;
+
+        run_ok(&schema, r#"{ obj(n: 9) { ... on MyObj { a } } }"#).await;
+
+        run_ok(&schema, r#"{ ... on Query { obj(n: 10) { a } } }"#).await;
     }
 }
